@@ -38,8 +38,8 @@ jobs:
       - name: Build y Push — Ventas
         uses: docker/build-push-action@v5
         with:
-          context: back-Ventas_SpringBoot/Springboot-API-REST
-          file: back-Ventas_SpringBoot/Springboot-API-REST/Dockerfile
+          context: ./back-ventas/Dockerfile
+          file: ./Dockerfile
           push: true
           tags: |
             dgomezpalacios/proyecto-semestral-ventas:latest
