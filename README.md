@@ -113,31 +113,65 @@ cd proyecto-semestral-backend/back-ventas
 | EC2-app | Backend (Docker + microservicios) | — | 10.0.131.198 |
 | EC2-datos | Base de datos (MySQL 8.0) | — | 10.0.145.181 |
 
-Todas las instancias pertenecen a la VPC **proyecto-semestral-vpc**. Solo EC2-web tiene IP pública; EC2-app y EC2-datos son accesibles únicamente desde dentro de la VPC.
+Todas las instancias pertenecen a la VPC **proyecto-semestral-vpc** (`10.0.0.0/16`). Solo EC2-web tiene IP pública; EC2-app y EC2-datos son accesibles únicamente desde dentro de la VPC.
+
+### Diagrama de red
+
+```
+          Internet
+             │
+             ▼
+  ┌────────────────────────────┐
+  │  EC2-web  3.83.173.99:80   │  ← nginx + React (IP pública)
+  │  privada: 10.0.12.224      │
+  └─────────────┬──────────────┘
+                │ VPC  10.0.0.0/16
+                ▼
+  ┌────────────────────────────┐
+  │  EC2-app  10.0.131.198     │  ← Spring Boot Despachos :8081
+  │                            │     Spring Boot Ventas    :8082
+  └─────────────┬──────────────┘
+                │ VPC interna
+                ▼
+  ┌────────────────────────────┐
+  │  EC2-datos 10.0.145.181    │  ← MySQL 8.0 :3306
+  └────────────────────────────┘
+```
+
+### Imágenes Docker Hub
+
+Las imágenes publicadas en Docker Hub se usan para el despliegue en EC2-app y EC2-web:
+
+| Servicio | Imagen |
+|---|---|
+| Backend Despachos | `dgomezpalacios/proyecto-semestral-backend:latest` |
+| Backend Ventas | `dgomezpalacios/proyecto-semestral-backend:latest` |
+
+```bash
+# Descargar imagen manualmente
+docker pull dgomezpalacios/proyecto-semestral-backend:latest
+
+# Ejecutar directamente desde Docker Hub (sin build)
+docker run -d -p 8081:8080 dgomezpalacios/proyecto-semestral-backend:latest
+```
 
 ### Conexión SSH
 
-La clave privada requerida es `devops-front.pem`. Acceder a EC2-web directamente:
+La clave privada requerida es `devops-front.pem`.
 
 ```bash
-# Conectar a EC2-web (Frontend) — única instancia con IP pública
+# Permisos correctos antes de conectar (Linux/Mac)
+chmod 400 devops-front.pem
+
+# Conectar a EC2-web (única instancia con IP pública)
 ssh -i devops-front.pem ec2-user@3.83.173.99
-```
 
-EC2-app y EC2-datos no tienen IP pública; acceder desde EC2-web como salto (jump host):
-
-```bash
-# Conectar a EC2-app (Backend) usando EC2-web como bastión
+# Conectar a EC2-app usando EC2-web como bastión
 ssh -i devops-front.pem -J ec2-user@3.83.173.99 ec2-user@10.0.131.198
 
-# Conectar a EC2-datos (MySQL) usando EC2-web como bastión
+# Conectar a EC2-datos usando EC2-web como bastión
 ssh -i devops-front.pem -J ec2-user@3.83.173.99 ec2-user@10.0.145.181
 ```
-
-> Asegurarse de que el archivo `.pem` tenga permisos correctos antes de usarlo:
-> ```bash
-> chmod 400 devops-front.pem
-> ```
 
 ### Levantar los microservicios en EC2-app
 
@@ -148,8 +182,8 @@ ssh -i devops-front.pem -J ec2-user@3.83.173.99 ec2-user@10.0.131.198
 # 2. Ir al directorio del proyecto
 cd ~/ProyectoSemestral
 
-# 3. Construir y levantar en segundo plano
-docker-compose up -d --build
+# 3. Levantar en segundo plano (usa imágenes de Docker Hub)
+docker-compose up -d
 
 # 4. Verificar que los contenedores corren
 docker-compose ps
@@ -162,48 +196,32 @@ docker-compose logs -f backend-ventas
 docker-compose down
 ```
 
-### Acceso a endpoints en AWS
+### Endpoints en AWS
 
-El tráfico llega a EC2-web (IP pública) y nginx actúa como reverse proxy hacia EC2-app:
-
-| Servicio | URL pública | Puerto interno en EC2-app |
+| Servicio | URL pública | Puerto en EC2-app |
 |---|---|---|
-| Frontend | http://3.83.173.99 | 80 |
-| API Despachos | http://3.83.173.99/api-despachos | 8081 |
-| API Ventas | http://3.83.173.99/api-ventas | 8082 |
-| Swagger Despachos | http://3.83.173.99/api-despachos/swagger-ui.html | 8081 |
-| Swagger Ventas | http://3.83.173.99/api-ventas/swagger-ui.html | 8082 |
+| Frontend | http://3.83.173.99:80 | — |
+| API Despachos | http://3.83.173.99:8081 | 8081 |
+| API Ventas | http://3.83.173.99:8082 | 8082 |
+| Swagger Despachos | http://3.83.173.99:8081/swagger-ui.html | 8081 |
+| Swagger Ventas | http://3.83.173.99:8082/swagger-ui.html | 8082 |
+| MySQL | — (solo VPC interna) | 3306 |
 
-Acceso directo a los puertos del backend (requiere abrir Security Group de EC2-app):
+Acceso interno desde EC2-web hacia EC2-app:
 
-| Servicio | URL directa (desde dentro de la VPC) |
+| Servicio | URL interna |
 |---|---|
 | backend-despachos | http://10.0.131.198:8081 |
 | backend-ventas | http://10.0.131.198:8082 |
+| MySQL | mysql://10.0.145.181:3306 |
 
 ### Security Groups configurados
 
 | Security Group | Instancia | Reglas de entrada |
 |---|---|---|
-| sg-web | EC2-web | 22 (SSH) desde cualquier IP, 80/443 (HTTP/HTTPS) desde cualquier IP |
-| sg-app | EC2-app | 22 (SSH) desde sg-web, 8081/8082 desde sg-web |
-| sg-datos | EC2-datos | 3306 (MySQL) desde sg-app únicamente |
-
-### Flujo de conexión
-
-```
-Internet
-   │
-   ▼
-EC2-web (3.83.173.99)     ← IP pública, nginx reverse proxy
-   │  10.0.12.224
-   │
-   ▼ IP privada
-EC2-app (10.0.131.198)    ← Docker + microservicios Spring Boot
-   │
-   ▼ IP privada
-EC2-datos (10.0.145.181)  ← MySQL 8.0
-```
+| sg-web | EC2-web | 22 SSH desde cualquier IP · 80/443 HTTP/HTTPS desde cualquier IP |
+| sg-app | EC2-app | 22 SSH desde sg-web · 8081/8082 desde sg-web |
+| sg-datos | EC2-datos | 3306 MySQL desde sg-app únicamente |
 
 ### AWS vs ejecución local
 
@@ -211,10 +229,11 @@ EC2-datos (10.0.145.181)  ← MySQL 8.0
 |---|---|---|
 | Acceso externo | Solo localhost | IP pública accesible desde cualquier lugar |
 | Alta disponibilidad | No | Posible con Auto Scaling y ALB |
-| Aislamiento de red | Red Docker interna | VPC con subredes públicas y privadas |
+| Aislamiento de red | Red Docker interna | VPC `10.0.0.0/16` con subredes públicas y privadas |
 | Base de datos | Contenedor efímero | EC2 dedicado con volumen EBS persistente |
-| Seguridad | Security groups de Docker | AWS Security Groups y NACLs |
+| Seguridad | Sin Security Groups | AWS Security Groups y NACLs por instancia |
 | Escalabilidad | Limitada al host | Vertical y horizontal según necesidad |
+| Imágenes | Build local | Docker Hub (`dgomezpalacios/`) |
 
 ## Seguridad
 
