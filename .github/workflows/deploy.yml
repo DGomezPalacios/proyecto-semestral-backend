@@ -30,7 +30,7 @@ jobs:
           ECR_REGISTRY: 965615436594.dkr.ecr.us-east-1.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/proyecto-semestral-backend-despachos:$IMAGE_TAG ./proyecto-semestral-backend
+          docker build -t $ECR_REGISTRY/proyecto-semestral-backend-despachos:$IMAGE_TAG -f proyecto-semestral-backend/Dockerfile proyecto-semestral-backend
           docker tag $ECR_REGISTRY/proyecto-semestral-backend-despachos:$IMAGE_TAG $ECR_REGISTRY/proyecto-semestral-backend-despachos:latest
           docker push $ECR_REGISTRY/proyecto-semestral-backend-despachos:$IMAGE_TAG
           docker push $ECR_REGISTRY/proyecto-semestral-backend-despachos:latest
@@ -40,7 +40,7 @@ jobs:
           ECR_REGISTRY: 965615436594.dkr.ecr.us-east-1.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/proyecto-semestral-backend-ventas:$IMAGE_TAG ./proyecto-semestral-backend/back-ventas
+          docker build -t $ECR_REGISTRY/proyecto-semestral-backend-ventas:$IMAGE_TAG -f proyecto-semestral-backend/back-ventas/Dockerfile proyecto-semestral-backend/back-ventas
           docker tag $ECR_REGISTRY/proyecto-semestral-backend-ventas:$IMAGE_TAG $ECR_REGISTRY/proyecto-semestral-backend-ventas:latest
           docker push $ECR_REGISTRY/proyecto-semestral-backend-ventas:$IMAGE_TAG
           docker push $ECR_REGISTRY/proyecto-semestral-backend-ventas:latest
