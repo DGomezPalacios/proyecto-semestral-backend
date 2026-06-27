@@ -249,3 +249,81 @@ El `Dockerfile` de cada microservicio sigue el patrón multi-stage:
 2. **Stage runtime** (`openjdk:17-slim`): copia solo el JAR final y lo ejecuta con usuario sin privilegios.
 
 El `HEALTHCHECK` integrado permite que `docker-compose` y orquestadores como Kubernetes conozcan el estado real de la aplicación.
+
+## ☁️ EP3 — Despliegue en AWS ECS Fargate
+
+### Arquitectura EP3
+Los microservicios migraron de EC2 con Docker Compose a AWS ECS Fargate con orquestación serverless. Cada microservicio tiene su propio servicio ECS independiente.
+
+- **Orquestador:** AWS ECS Fargate
+- **Registry:** Amazon ECR (3 repositorios privados)
+- **Load Balancer:** Application Load Balancer (ALB)
+- **Base de datos:** EC2-datos MySQL 8.0 (IP privada: 10.0.145.181)
+
+### Recursos AWS
+
+| Recurso | Despachos | Ventas |
+|---------|-----------|--------|
+| Repositorio ECR | proyecto-semestral-backend-despachos | proyecto-semestral-backend-ventas |
+| Task Definition | despachos-task:1 | ventas-task:1 |
+| Servicio ECS | despachos-service | ventas-service |
+| Target Group | despachos-tg (puerto 8080) | ventas-tg (puerto 8080) |
+| CPU | 512 | 512 |
+| Memoria | 1024 MB | 1024 MB |
+
+### Rutas ALB
+| Ruta | Destino |
+|------|---------|
+| /api/despachos* | despachos-service |
+| /api/ventas* | ventas-service |
+
+### Variables de entorno en ECS
+| Variable | Despachos | Ventas |
+|----------|-----------|--------|
+| SPRING_DATASOURCE_URL | jdbc:mysql://10.0.145.181:3306/despachos_db | jdbc:mysql://10.0.145.181:3306/ventas_db |
+| SPRING_DATASOURCE_USERNAME | root | root |
+| SPRING_JPA_HIBERNATE_DDL_AUTO | update | update |
+
+### Pipeline CI/CD (EP3)
+El pipeline se dispara automáticamente en cada push a la rama deploy y procesa ambos microservicios en el mismo workflow:
+
+1. Build Despachos — docker build -f Dockerfile .
+2. Push Despachos — sube imagen a ECR con tag :latest y :<commit-sha>
+3. Build Ventas — docker build -f back-ventas/Dockerfile ./back-ventas
+4. Push Ventas — sube imagen a ECR con tag :latest y :<commit-sha>
+5. Deploy Despachos — aws ecs update-service --force-new-deployment
+6. Deploy Ventas — aws ecs update-service --force-new-deployment
+
+#### Secrets requeridos en GitHub
+| Secret | Descripción |
+|--------|-------------|
+| AWS_ACCESS_KEY_ID | Credencial AWS |
+| AWS_SECRET_ACCESS_KEY | Credencial AWS |
+| AWS_SESSION_TOKEN | Token de sesión AWS Academy |
+
+### Cambios en Dockerfile para ECS
+La imagen base fue actualizada de openjdk:17-slim (deprecada) a eclipse-temurin:17-jre-alpine.
+El comando de creación de usuario fue actualizado de groupadd/useradd a addgroup/adduser para compatibilidad con Alpine Linux.
+
+### Autoscaling ECS
+| Parámetro | Valor |
+|-----------|-------|
+| Tipo | Target Tracking Scaling |
+| Métrica | ECSServiceAverageCPUUtilization |
+| Umbral | 50% CPU |
+| Mínimo tasks | 1 |
+| Máximo tasks | 3 |
+| Cooldown | 60 segundos |
+
+### Logs
+Los logs se envían automáticamente a CloudWatch Logs:
+- Despachos: /ecs/despachos
+- Ventas: /ecs/ventas
+
+## 👥 Equipo
+- Daniela Gómez Palacios
+- Berta Soto Jerez
+
+**Curso:** ISY1101 — Introducción a Herramientas DevOps  
+**Profesor:** Álvaro Mellado Pimentel  
+**Instituto:** DuocUC — 2025
