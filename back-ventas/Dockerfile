@@ -10,9 +10,9 @@ COPY src ./src
 RUN mvn clean package -DskipTests -B
 
 # Stage 2: Runtime
-FROM openjdk:17-slim
+FROM eclipse-temurin:17-jre-alpine
 
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
 
